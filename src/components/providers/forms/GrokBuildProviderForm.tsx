@@ -422,9 +422,14 @@ export function GrokBuildProviderForm({
       return;
     }
 
+    // 档位显示名留空时回填供应商名称，保持"供应商名即默认显示名"的旧行为。
+    const finalEntries = modelEntries.map((entry) =>
+      entry.name.trim() ? entry : { ...entry, name },
+    );
+
     const finalConfig = updateGrokBuildConfig(rawConfig, {
       model: defaultProfile,
-      models: modelEntries,
+      models: finalEntries,
       baseUrl,
       apiKey,
       apiBackend,
@@ -691,6 +696,11 @@ export function GrokBuildProviderForm({
                       })}
                     />
                     <Input
+                      id={
+                        defaultProfile === entry.profile
+                          ? "grokbuild-profile"
+                          : `grokbuild-profile-${index}`
+                      }
                       value={entry.profile}
                       onChange={(event) => {
                         const value = event.target.value.trim();

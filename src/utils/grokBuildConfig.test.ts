@@ -108,7 +108,7 @@ context_window = 500000
     expect(validateGrokBuildConfig("")).toBe("config.toml must not be empty");
     expect(validateGrokBuildConfig("[models")).not.toBeNull();
     expect(validateGrokBuildConfig('[models]\ndefault = "missing"\n')).toBe(
-      "Missing [models] default",
+      "Missing [model.<profile>] tables",
     );
 
     const missingCredentials = `[models]
