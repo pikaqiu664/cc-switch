@@ -98,7 +98,6 @@ export function normalizeGrokReasoningEfforts(text: string): string[] {
 
 export function parseGrokBuildConfig(
   configToml: string | undefined,
-  fallbackName = "",
 ): GrokBuildConfigValues {
   const fallback: GrokBuildConfigValues = {
     model: GROK_BUILD_DEFAULT_MODEL,
@@ -119,7 +118,7 @@ export function parseGrokBuildConfig(
     if (modelEntries.length === 0) return fallback;
 
     // 公共凭据从默认档位表读取（多档位共享网关与密钥的约定）。
-    const selectedModel = asRecord(root?.model)?.[defaultModel];
+    const selectedModel = asRecord(asRecord(root?.model)?.[defaultModel]);
     return {
       model: defaultModel,
       models: modelEntries,

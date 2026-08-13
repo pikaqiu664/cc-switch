@@ -107,7 +107,7 @@ export function GrokBuildProviderForm({
       ? initialData.settingsConfig.config
       : undefined;
   const initialConfig = useMemo(
-    () => parseGrokBuildConfig(initialConfigText, initialData?.name),
+    () => parseGrokBuildConfig(initialConfigText),
     [initialConfigText, initialData?.name],
   );
 
@@ -379,7 +379,7 @@ export function GrokBuildProviderForm({
   const handleRawConfigChange = (value: string) => {
     setRawConfig(value);
     if (validateGrokBuildConfig(value)) return;
-    const parsed = parseGrokBuildConfig(value, form.getValues("name"));
+    const parsed = parseGrokBuildConfig(value);
     setModelEntries(
       parsed.models.length > 0
         ? parsed.models

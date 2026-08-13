@@ -747,7 +747,7 @@ fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
 
         // 思考等级映射：camelCase（DB SSOT）优先，snake_case（live 反解兜底）兼容。
         // 数组元素去空白/去空串/去重，保持填写顺序。
-        let mut supported_reasoning_levels = model_config
+        let supported_reasoning_levels = model_config
             .get("supportedReasoningLevels")
             .or_else(|| model_config.get("supported_reasoning_levels"))
             .and_then(|value| value.as_array())

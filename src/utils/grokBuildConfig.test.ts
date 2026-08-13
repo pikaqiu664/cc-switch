@@ -111,10 +111,16 @@ context_window = 500000
       "Missing [models] default",
     );
 
-    const missingCredentials = buildGrokBuildConfig({
-      ...singleModelValues,
-      apiKey: "",
-    });
+    const missingCredentials = `[models]
+default = "grok-4.5"
+
+[model."grok-4.5"]
+model = "grok-4.5"
+base_url = "https://api.example.com/v1"
+name = "Relay"
+api_backend = "responses"
+context_window = 500000
+`;
     expect(validateGrokBuildConfig(missingCredentials)).toBe(
       'Missing api_key or env_key in [model."grok-4.5"]',
     );
@@ -129,7 +135,7 @@ context_window = 500000
     expect(
       validateGrokBuildConfig(
         invalidWindow.replace(
-          'name = "Relay \\"A\\""',
+          'name = "Relay"',
           'name = "Relay"\napi_key = "secret"',
         ),
       ),
