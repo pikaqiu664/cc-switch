@@ -907,7 +907,20 @@
     "contextWindowInvalid": "上下文視窗必須是正整數",
     "profile": "用戶端模型檔位",
     "rawConfig": "config.toml",
-    "invalidToml": "config.toml 格式錯誤：{{error}}"
+    "invalidToml": "config.toml 格式錯誤：{{error}}",
+    "modelProfilesLabel": "模型檔位",
+    "modelProfilesHint": "一個檔位對應 config.toml 的一張 [model.<檔位名>] 表；API 位址、API Key 與 API Backend 為所有檔位共用。思考等級依上游實際支援填寫（逗號分隔），留空不寫入。",
+    "fillEfforts": "一鍵填入等級",
+    "fillEffortsEmpty": "請先在第一列填寫思考等級",
+    "fillEffortsSuccess": "已將思考等級套用到所有檔位",
+    "addModel": "新增模型",
+    "columnProfile": "檔位名",
+    "columnName": "顯示名稱",
+    "columnModel": "實際請求模型",
+    "columnContextWindow": "上下文視窗",
+    "columnReasoning": "思考等級",
+    "columnDefaultProfile": "設為預設檔位",
+    "namePlaceholder": "例如: DeepSeek V4 Flash"
   },
   "sessionManager": {
     "title": "工作階段管理",
@@ -1384,7 +1397,12 @@
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "預設供應商已自動設定；自訂供應商會按名稱/位址自動推斷。僅當自動識別不準時才需手動覆寫。",
     "advancedSectionHint": "包含上游格式、模型映射、思考能力與自訂 User-Agent。使用 Chat Completions 協定的供應商需開啟路由接管才能使用。",
-    "noCommonConfigToApply": "通用設定片段為空或沒有可寫入的內容"
+    "noCommonConfigToApply": "通用設定片段為空或沒有可寫入的內容",
+    "catalogColumnReasoning": "思考等級",
+    "catalogReasoningPlaceholder": "思考等級（逗號分隔，例如: low, high, max；留空使用範本預設）",
+    "catalogReasoningHint": "Codex 會將這裡填寫的等級原樣發送給上游 reasoning.effort，請依上游實際支援填寫；留空則使用範本預設等級。",
+    "catalogColumnDefaultReasoning": "預設思考等級",
+    "catalogDefaultReasoningPlaceholder": "預設等級（選填，例如: high）"
   },
   "geminiConfig": {
     "envFile": "環境變數 (.env)",

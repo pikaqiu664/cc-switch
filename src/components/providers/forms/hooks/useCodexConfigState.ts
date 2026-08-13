@@ -92,6 +92,20 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
                 : typeof item?.base_instructions === "string"
                   ? item.base_instructions
                   : undefined;
+            // 思考等级映射与默认等级：camelCase（DB SSOT）/ snake_case（live 反解）双格式。
+            const supportedReasoningLevels = Array.isArray(
+              item?.supportedReasoningLevels,
+            )
+              ? item.supportedReasoningLevels
+              : Array.isArray(item?.supported_reasoning_levels)
+                ? item.supported_reasoning_levels
+                : undefined;
+            const defaultReasoningLevel =
+              typeof item?.defaultReasoningLevel === "string"
+                ? item.defaultReasoningLevel
+                : typeof item?.default_reasoning_level === "string"
+                  ? item.default_reasoning_level
+                  : undefined;
             return {
               model: typeof item?.model === "string" ? item.model : "",
               displayName:
@@ -113,6 +127,8 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
                 : {}),
               ...(inputModalities ? { inputModalities } : {}),
               ...(baseInstructions ? { baseInstructions } : {}),
+              ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+              ...(defaultReasoningLevel ? { defaultReasoningLevel } : {}),
             };
           })
           .filter((item: CodexCatalogModel) => item.model.trim()),

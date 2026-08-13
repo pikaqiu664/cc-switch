@@ -170,6 +170,27 @@ pub fn validate_config_toml(config_toml: &str) -> Result<(), AppError> {
             )
         })?;
 
+    // 宽容校验：任一 [model.*] 表只要声明了 reasoning_efforts，
+    // 就必须是非空字符串数组，避免坏配置进入 live 文件。
+    for (profile, value) in model_entries {
+        let Some(profile_table) = value.as_table() else {
+            continue;
+        };
+        let Some(efforts) = profile_table.get("reasoning_efforts") else {
+            continue;
+        };
+        let valid = efforts
+            .as_array()
+            .is_some_and(|levels| !levels.is_empty() && levels.iter().all(toml::Value::is_str));
+        if !valid {
+            return Err(AppError::localized(
+                "provider.grokbuild.reasoning_efforts.invalid",
+                format!("Grok Build [model.\"{profile}\"] reasoning_efforts 必须是非空字符串数组"),
+                format!("Grok Build [model.\"{profile}\"] reasoning_efforts must be a non-empty string array"),
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -490,6 +511,70 @@ context_window = 500000
         let error = validate_config_toml(&config).expect_err("credentials should be required");
         assert!(error.to_string().contains("api_key"));
         assert!(error.to_string().contains("env_key"));
+    }
+
+    #[test]
+    fn accepts_multi_model_config_with_reasoning_efforts() {
+        let config = r#"[models]
+default = "deepseek-v4-pro"
+default_reasoning_effort = "max"
+
+[model."deepseek-v4-pro"]
+model = "deepseek-v4-pro"
+base_url = "https://api.deepseek.com/v1"
+name = "DeepSeek V4 Pro"
+api_key = "secret"
+api_backend = "chat_completions"
+context_window = 1000000
+supports_reasoning_effort = true
+reasoning_efforts = ["low", "high", "max"]
+
+[model."deepseek-v4-flash"]
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com/v1"
+name = "DeepSeek V4 Flash"
+api_key = "secret"
+api_backend = "chat_completions"
+context_window = 1000000
+supports_reasoning_effort = true
+reasoning_efforts = ["low", "high"]
+"#;
+        validate_config_toml(config).expect("multi-model config must validate");
+        let selected = extract_model_config(config).expect("default profile extract");
+        assert_eq!(selected.profile, "deepseek-v4-pro");
+    }
+
+    #[test]
+    fn rejects_invalid_reasoning_efforts_in_any_model_table() {
+        let valid = r#"[models]
+default = "deepseek-v4-pro"
+
+[model."deepseek-v4-pro"]
+model = "deepseek-v4-pro"
+base_url = "https://api.deepseek.com/v1"
+name = "DeepSeek V4 Pro"
+api_key = "secret"
+api_backend = "chat_completions"
+context_window = 1000000
+
+[model."deepseek-v4-flash"]
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com/v1"
+name = "DeepSeek V4 Flash"
+api_key = "secret"
+api_backend = "chat_completions"
+context_window = 1000000
+reasoning_efforts = []
+"#;
+        let error = validate_config_toml(valid).expect_err("empty efforts must be rejected");
+        assert!(error.to_string().contains("reasoning_efforts"));
+
+        let mixed = valid.replace(
+            "reasoning_efforts = []",
+            "reasoning_efforts = [\"low\", 42]",
+        );
+        let error = validate_config_toml(&mixed).expect_err("non-string efforts must be rejected");
+        assert!(error.to_string().contains("reasoning_efforts"));
     }
 
     #[test]

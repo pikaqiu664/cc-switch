@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { Plus, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -13,6 +14,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import JsonEditor from "@/components/JsonEditor";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { providerSchema, type ProviderFormData } from "@/lib/schemas/provider";
@@ -44,10 +46,15 @@ import {
   extractCodexWireApi,
 } from "@/utils/providerConfigUtils";
 import {
+  GROK_BUILD_DEFAULT_API_BACKEND,
+  GROK_BUILD_DEFAULT_CONTEXT_WINDOW,
+  GROK_BUILD_DEFAULT_MODEL,
   buildGrokBuildConfig,
+  normalizeGrokReasoningEfforts,
   parseGrokBuildConfig,
   updateGrokBuildConfig,
   validateGrokBuildConfig,
+  type GrokBuildModelEntry,
 } from "@/utils/grokBuildConfig";
 import { resolveProviderIcon } from "@/utils/providerIcon";
 import { GROKBUILD_OFFICIAL_PROVIDER_ID } from "@/utils/providerCapabilities";
@@ -72,6 +79,17 @@ export const grokApiBackendFromApiFormat = (format: CodexApiFormat): string => {
   if (format === "anthropic") return "messages";
   return "responses";
 };
+
+/** 新建档位行的默认值（档位名与实际模型一致，等级映射为空） */
+function createModelEntry(profile: string, name = ""): GrokBuildModelEntry {
+  return {
+    profile,
+    model: profile,
+    name,
+    contextWindow: GROK_BUILD_DEFAULT_CONTEXT_WINDOW,
+    reasoningEfforts: [],
+  };
+}
 
 export function GrokBuildProviderForm({
   providerId,
@@ -103,16 +121,24 @@ export function GrokBuildProviderForm({
     initialData?.meta?.isPartner ?? false,
   );
   const [partnerPromotionKey, setPartnerPromotionKey] = useState<string>();
-  const [profile, setProfile] = useState(initialConfig.model);
-  const [upstreamModel, setUpstreamModel] = useState(
-    initialConfig.upstreamModel ?? initialConfig.model,
+  // 多模型档位列表：models.default 指向的档位用 defaultProfile 单独跟踪，
+  // 列表内容（profile/model/name/上下文/思考等级）由行编辑维护。
+  const [modelEntries, setModelEntries] = useState<GrokBuildModelEntry[]>(
+    initialConfig.models.length > 0
+      ? initialConfig.models
+      : [
+          createModelEntry(
+            initialConfig.model || GROK_BUILD_DEFAULT_MODEL,
+            initialData?.name ?? "",
+          ),
+        ],
+  );
+  const [defaultProfile, setDefaultProfile] = useState(
+    initialConfig.model || GROK_BUILD_DEFAULT_MODEL,
   );
   const [baseUrl, setBaseUrl] = useState(initialConfig.baseUrl);
   const [apiKey, setApiKey] = useState(initialConfig.apiKey);
   const [apiBackend, setApiBackend] = useState(initialConfig.apiBackend);
-  const [contextWindow, setContextWindow] = useState(
-    String(initialConfig.contextWindow),
-  );
   const [rawConfig, setRawConfig] = useState(
     initialConfigText ?? buildGrokBuildConfig(initialConfig),
   );
@@ -166,7 +192,7 @@ export function GrokBuildProviderForm({
   const form = useForm<ProviderFormData>({
     resolver: zodResolver(providerSchema),
     defaultValues: {
-      name: initialData?.name ?? initialConfig.name,
+      name: initialData?.name ?? initialConfig.models[0]?.name ?? "",
       websiteUrl: initialData?.websiteUrl ?? "",
       notes: initialData?.notes ?? "",
       settingsConfig: JSON.stringify({ config: rawConfig }),
@@ -213,20 +239,72 @@ export function GrokBuildProviderForm({
     return Array.from(urls).map((url) => ({ url }));
   }, [baseUrl, draftCustomEndpoints, presetEndpoints]);
 
-  const syncStructuredConfig = (
-    overrides: Partial<ReturnType<typeof parseGrokBuildConfig>>,
-  ) => {
-    const next = {
-      model: profile,
-      upstreamModel,
-      baseUrl,
-      name: form.getValues("name") || initialConfig.name,
-      apiKey,
-      apiBackend,
-      contextWindow: Number.parseInt(contextWindow, 10),
-      ...overrides,
-    };
-    setRawConfig((current) => updateGrokBuildConfig(current, next));
+  /** 用给定的档位列表与默认档位重建 config.toml 文本（公共字段取当前 state） */
+  const syncWithEntries = (entries: GrokBuildModelEntry[], profile: string) => {
+    setRawConfig((current) =>
+      updateGrokBuildConfig(current, {
+        model: profile,
+        models: entries,
+        baseUrl,
+        apiKey,
+        apiBackend,
+        envKey: parseGrokBuildConfig(current).envKey,
+      }),
+    );
+  };
+
+  const updateEntry = (index: number, patch: Partial<GrokBuildModelEntry>) => {
+    const next = modelEntries.map((entry, i) =>
+      i === index ? { ...entry, ...patch } : entry,
+    );
+    setModelEntries(next);
+    syncWithEntries(next, defaultProfile);
+  };
+
+  const addEntry = () => {
+    const nextProfile = `grok-${modelEntries.length + 1}`;
+    const next = [
+      ...modelEntries,
+      createModelEntry(nextProfile, form.getValues("name") || ""),
+    ];
+    setModelEntries(next);
+    syncWithEntries(next, defaultProfile);
+  };
+
+  const removeEntry = (index: number) => {
+    const removing = modelEntries[index];
+    if (modelEntries.length <= 1) return;
+    const next = modelEntries.filter((_, i) => i !== index);
+    const nextDefault =
+      removing && defaultProfile === removing.profile && next[0]
+        ? next[0].profile
+        : defaultProfile;
+    setModelEntries(next);
+    setDefaultProfile(nextDefault);
+    syncWithEntries(next, nextDefault);
+  };
+
+  /** 一键填充：把第一行的思考等级复制到其余所有行 */
+  const fillEffortsToAllEntries = () => {
+    const source = modelEntries[0]?.reasoningEfforts ?? [];
+    if (source.length === 0) {
+      toast.error(
+        t("grokBuild.fillEffortsEmpty", {
+          defaultValue: "请先在第一行填写思考等级",
+        }),
+      );
+      return;
+    }
+    const next = modelEntries.map((entry, index) =>
+      index === 0 ? entry : { ...entry, reasoningEfforts: [...source] },
+    );
+    setModelEntries(next);
+    syncWithEntries(next, defaultProfile);
+    toast.success(
+      t("grokBuild.fillEffortsSuccess", {
+        defaultValue: "已将思考等级应用到所有档位",
+      }),
+    );
   };
 
   const handlePresetChange = (presetId: string) => {
@@ -260,7 +338,7 @@ export function GrokBuildProviderForm({
     const preset = entry.preset;
     const presetName = preset.nameKey ? String(t(preset.nameKey)) : preset.name;
     const presetBaseUrl = extractCodexBaseUrl(preset.config) ?? "";
-    const presetModel = extractCodexModelName(preset.config) ?? profile;
+    const presetModel = extractCodexModelName(preset.config) ?? defaultProfile;
     const presetApiFormat =
       preset.apiFormat ??
       codexApiFormatFromWireApi(extractCodexWireApi(preset.config)) ??
@@ -280,19 +358,20 @@ export function GrokBuildProviderForm({
     setPartnerPromotionKey(preset.partnerPromotionKey);
     setBaseUrl(presetBaseUrl);
     setApiKey(presetApiKey);
-    setUpstreamModel(presetModel);
     setApiFormat(presetApiFormat);
     setApiBackend(presetApiBackend);
     setPresetEndpoints(preset.endpointCandidates ?? []);
+    const presetEntry = createModelEntry(presetModel, presetName);
+    setModelEntries([presetEntry]);
+    setDefaultProfile(presetModel);
     setRawConfig(
       buildGrokBuildConfig({
-        model: profile,
-        upstreamModel: presetModel,
+        model: presetModel,
+        models: [presetEntry],
         baseUrl: presetBaseUrl,
-        name: presetName,
         apiKey: presetApiKey,
+        envKey: "",
         apiBackend: presetApiBackend,
-        contextWindow: Number.parseInt(contextWindow, 10),
       }),
     );
   };
@@ -301,13 +380,16 @@ export function GrokBuildProviderForm({
     setRawConfig(value);
     if (validateGrokBuildConfig(value)) return;
     const parsed = parseGrokBuildConfig(value, form.getValues("name"));
-    setProfile(parsed.model);
-    setUpstreamModel(parsed.upstreamModel ?? parsed.model);
+    setModelEntries(
+      parsed.models.length > 0
+        ? parsed.models
+        : [createModelEntry(parsed.model || GROK_BUILD_DEFAULT_MODEL)],
+    );
+    setDefaultProfile(parsed.model || GROK_BUILD_DEFAULT_MODEL);
     setBaseUrl(parsed.baseUrl);
     setApiKey(parsed.apiKey);
-    setApiBackend(parsed.apiBackend);
-    setContextWindow(String(parsed.contextWindow));
-    if (parsed.name) form.setValue("name", parsed.name);
+    setApiBackend(parsed.apiBackend || GROK_BUILD_DEFAULT_API_BACKEND);
+    if (parsed.models[0]?.name) form.setValue("name", parsed.models[0].name);
   };
 
   const handleSubmit = async (values: ProviderFormData) => {
@@ -330,14 +412,8 @@ export function GrokBuildProviderForm({
       return;
     }
 
-    const parsedContextWindow = Number.parseInt(contextWindow, 10);
     const envKey = parseGrokBuildConfig(rawConfig).envKey?.trim();
-    if (
-      !name ||
-      !baseUrl.trim() ||
-      (!apiKey.trim() && !envKey) ||
-      !profile.trim()
-    ) {
+    if (!name || !baseUrl.trim() || (!apiKey.trim() && !envKey)) {
       toast.error(
         t("providerForm.requiredFields", {
           defaultValue: "请填写供应商名称、API 地址、API Key 和模型",
@@ -345,23 +421,14 @@ export function GrokBuildProviderForm({
       );
       return;
     }
-    if (!Number.isInteger(parsedContextWindow) || parsedContextWindow <= 0) {
-      toast.error(
-        t("grokBuild.contextWindowInvalid", {
-          defaultValue: "上下文窗口必须是正整数",
-        }),
-      );
-      return;
-    }
 
     const finalConfig = updateGrokBuildConfig(rawConfig, {
-      model: profile,
-      upstreamModel,
+      model: defaultProfile,
+      models: modelEntries,
       baseUrl,
-      name,
       apiKey,
       apiBackend,
-      contextWindow: parsedContextWindow,
+      envKey,
     });
     const configError = validateGrokBuildConfig(finalConfig);
     if (configError) {
@@ -429,6 +496,11 @@ export function GrokBuildProviderForm({
   };
 
   const rawConfigError = validateGrokBuildConfig(rawConfig);
+  const defaultEntry = modelEntries.find(
+    (entry) => entry.profile === defaultProfile,
+  );
+  // CodexFormFields 的"默认模型"输入编辑默认档位的实际请求模型。
+  const defaultUpstreamModel = defaultEntry?.model ?? "";
 
   return (
     <Form {...form}>
@@ -451,24 +523,7 @@ export function GrokBuildProviderForm({
 
         {category !== "official" && (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <FormItem>
-                <FormLabel htmlFor="grokbuild-profile">
-                  {t("grokBuild.profile", { defaultValue: "客户端模型档位" })}
-                </FormLabel>
-                <Input
-                  id="grokbuild-profile"
-                  value={profile}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setProfile(value);
-                    syncStructuredConfig({ model: value });
-                  }}
-                  placeholder="grok-4.5"
-                  autoComplete="off"
-                />
-              </FormItem>
-
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormItem>
                 <FormLabel htmlFor="grokbuild-api-backend">
                   {t("grokBuild.apiBackend", { defaultValue: "API Backend" })}
@@ -479,30 +534,10 @@ export function GrokBuildProviderForm({
                   onChange={(event) => {
                     const value = event.target.value;
                     setApiBackend(value);
-                    syncStructuredConfig({ apiBackend: value });
+                    syncWithEntries(modelEntries, defaultProfile);
                   }}
                   placeholder="responses"
                   autoComplete="off"
-                />
-              </FormItem>
-
-              <FormItem>
-                <FormLabel htmlFor="grokbuild-context-window">
-                  {t("grokBuild.contextWindow", { defaultValue: "上下文窗口" })}
-                </FormLabel>
-                <Input
-                  id="grokbuild-context-window"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={contextWindow}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setContextWindow(value);
-                    syncStructuredConfig({
-                      contextWindow: Number.parseInt(value, 10),
-                    });
-                  }}
                 />
               </FormItem>
             </div>
@@ -513,7 +548,7 @@ export function GrokBuildProviderForm({
               codexApiKey={apiKey}
               onApiKeyChange={(value) => {
                 setApiKey(value);
-                syncStructuredConfig({ apiKey: value });
+                syncWithEntries(modelEntries, defaultProfile);
               }}
               category={category}
               shouldShowApiKeyLink={Boolean(websiteUrl)}
@@ -524,7 +559,7 @@ export function GrokBuildProviderForm({
               codexBaseUrl={baseUrl}
               onBaseUrlChange={(value) => {
                 setBaseUrl(value);
-                syncStructuredConfig({ baseUrl: value });
+                syncWithEntries(modelEntries, defaultProfile);
               }}
               isFullUrl={isFullUrl}
               onFullUrlChange={setIsFullUrl}
@@ -533,17 +568,19 @@ export function GrokBuildProviderForm({
               onCustomEndpointsChange={setDraftCustomEndpoints}
               autoSelect={endpointAutoSelect}
               onAutoSelectChange={setEndpointAutoSelect}
-              codexModel={upstreamModel}
+              codexModel={defaultUpstreamModel}
               onModelChange={(value) => {
-                setUpstreamModel(value);
-                syncStructuredConfig({ upstreamModel: value });
+                const index = modelEntries.findIndex(
+                  (entry) => entry.profile === defaultProfile,
+                );
+                if (index >= 0) updateEntry(index, { model: value });
               }}
               apiFormat={apiFormat}
               onApiFormatChange={(value) => {
                 const backend = grokApiBackendFromApiFormat(value);
                 setApiFormat(value);
                 setApiBackend(backend);
-                syncStructuredConfig({ apiBackend: backend });
+                syncWithEntries(modelEntries, defaultProfile);
               }}
               anthropicAuthField={anthropicAuthField}
               onAnthropicAuthFieldChange={setAnthropicAuthField}
@@ -563,6 +600,188 @@ export function GrokBuildProviderForm({
               localProxyBodyOverride={bodyOverride}
               onLocalProxyBodyOverrideChange={setBodyOverride}
             />
+
+            {/* 模型档位：多行列表（交互参考 Claude 模型映射区），
+                每行一个 [model.<profile>] 表 + 可选的思考等级映射 */}
+            <div className="space-y-3 border-t border-border-default pt-3">
+              <div className="flex items-center justify-between">
+                <FormLabel>
+                  {t("grokBuild.modelProfilesLabel", {
+                    defaultValue: "模型档位",
+                  })}
+                </FormLabel>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={fillEffortsToAllEntries}
+                    className="h-7 gap-1"
+                  >
+                    <Wand2 className="h-3.5 w-3.5" />
+                    {t("grokBuild.fillEfforts", {
+                      defaultValue: "一键填充等级",
+                    })}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addEntry}
+                    className="h-7 gap-1"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("grokBuild.addModel", { defaultValue: "添加模型" })}
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t("grokBuild.modelProfilesHint", {
+                  defaultValue:
+                    "一个档位对应 config.toml 的一张 [model.<档位名>] 表；API 地址、API Key 与 API Backend 为所有档位共享。思考等级按上游实际支持填写（逗号分隔），留空不写入。",
+                })}
+              </p>
+
+              <div className="hidden grid-cols-[32px_140px_1fr_1fr_110px_170px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground md:grid">
+                <span aria-hidden />
+                <span>
+                  {t("grokBuild.columnProfile", { defaultValue: "档位名" })}
+                </span>
+                <span>
+                  {t("grokBuild.columnName", { defaultValue: "显示名" })}
+                </span>
+                <span>
+                  {t("grokBuild.columnModel", {
+                    defaultValue: "实际请求模型",
+                  })}
+                </span>
+                <span>
+                  {t("grokBuild.columnContextWindow", {
+                    defaultValue: "上下文窗口",
+                  })}
+                </span>
+                <span>
+                  {t("grokBuild.columnReasoning", {
+                    defaultValue: "思考等级",
+                  })}
+                </span>
+                <span aria-hidden />
+              </div>
+
+              <div className="space-y-2">
+                {modelEntries.map((entry, index) => (
+                  <div
+                    key={`${entry.profile}-${index}`}
+                    className="grid grid-cols-1 items-center gap-2 md:grid-cols-[32px_140px_1fr_1fr_110px_170px_36px]"
+                  >
+                    <Checkbox
+                      checked={defaultProfile === entry.profile}
+                      onCheckedChange={(checked) => {
+                        // 默认档位必须存在且只有一个：勾选即设为默认，取消勾选忽略
+                        if (checked) {
+                          setDefaultProfile(entry.profile);
+                          syncWithEntries(modelEntries, entry.profile);
+                        }
+                      }}
+                      aria-label={t("grokBuild.columnDefaultProfile", {
+                        defaultValue: "默认档位",
+                      })}
+                      title={t("grokBuild.columnDefaultProfile", {
+                        defaultValue: "设为默认档位",
+                      })}
+                    />
+                    <Input
+                      value={entry.profile}
+                      onChange={(event) => {
+                        const value = event.target.value.trim();
+                        const wasDefault = defaultProfile === entry.profile;
+                        const next = modelEntries.map((item, i) =>
+                          i === index ? { ...item, profile: value } : item,
+                        );
+                        setModelEntries(next);
+                        const nextDefault = wasDefault ? value : defaultProfile;
+                        setDefaultProfile(nextDefault);
+                        syncWithEntries(next, nextDefault);
+                      }}
+                      placeholder="grok-4.5"
+                      autoComplete="off"
+                      aria-label={t("grokBuild.columnProfile", {
+                        defaultValue: "档位名",
+                      })}
+                    />
+                    <Input
+                      value={entry.name}
+                      onChange={(event) =>
+                        updateEntry(index, { name: event.target.value })
+                      }
+                      placeholder={t("grokBuild.namePlaceholder", {
+                        defaultValue: "例如: DeepSeek V4 Flash",
+                      })}
+                      autoComplete="off"
+                      aria-label={t("grokBuild.columnName", {
+                        defaultValue: "显示名",
+                      })}
+                    />
+                    <Input
+                      value={entry.model}
+                      onChange={(event) =>
+                        updateEntry(index, { model: event.target.value })
+                      }
+                      placeholder="deepseek-v4-flash"
+                      autoComplete="off"
+                      aria-label={t("grokBuild.columnModel", {
+                        defaultValue: "实际请求模型",
+                      })}
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      value={entry.contextWindow}
+                      onChange={(event) =>
+                        updateEntry(index, {
+                          contextWindow: Number.parseInt(
+                            event.target.value.replace(/[^\d]/g, ""),
+                            10,
+                          ),
+                        })
+                      }
+                      placeholder="500000"
+                      autoComplete="off"
+                      aria-label={t("grokBuild.columnContextWindow", {
+                        defaultValue: "上下文窗口",
+                      })}
+                    />
+                    <Input
+                      value={entry.reasoningEfforts.join(", ")}
+                      onChange={(event) =>
+                        updateEntry(index, {
+                          reasoningEfforts: normalizeGrokReasoningEfforts(
+                            event.target.value,
+                          ),
+                        })
+                      }
+                      placeholder="low, high, max"
+                      autoComplete="off"
+                      aria-label={t("grokBuild.columnReasoning", {
+                        defaultValue: "思考等级",
+                      })}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeEntry(index)}
+                      disabled={modelEntries.length <= 1}
+                      title={t("common.delete", { defaultValue: "删除" })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <div className="space-y-2">
               <FormLabel htmlFor="grokbuild-config-toml">

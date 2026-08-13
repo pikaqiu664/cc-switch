@@ -120,6 +120,23 @@ interface CodexFormFieldsProps {
 
 type CodexCatalogRow = CodexCatalogModel & { rowId: string };
 
+/** 思考等级数组 → 逗号分隔文本（用于行内输入展示） */
+const reasoningLevelsToText = (levels?: string[]): string =>
+  (levels ?? []).join(", ");
+
+/** 逗号分隔文本 → 思考等级数组（去空白、去空串、去重，保持填写顺序） */
+const reasoningLevelsFromText = (text: string): string[] => {
+  const seen = new Set<string>();
+  return text
+    .split(",")
+    .map((level) => level.trim())
+    .filter((level) => {
+      if (!level || seen.has(level)) return false;
+      seen.add(level);
+      return true;
+    });
+};
+
 function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
   return {
     rowId: crypto.randomUUID(),
@@ -134,6 +151,12 @@ function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
     ...(seed?.inputModalities ? { inputModalities: seed.inputModalities } : {}),
     ...(seed?.baseInstructions
       ? { baseInstructions: seed.baseInstructions }
+      : {}),
+    ...(seed?.supportedReasoningLevels?.length
+      ? { supportedReasoningLevels: seed.supportedReasoningLevels }
+      : {}),
+    ...(seed?.defaultReasoningLevel
+      ? { defaultReasoningLevel: seed.defaultReasoningLevel }
       : {}),
   };
 }
@@ -158,7 +181,11 @@ function catalogRowsMatchModels(
         (incoming.supportsParallelToolCalls ?? null) &&
       (row.baseInstructions ?? "") === (incoming.baseInstructions ?? "") &&
       JSON.stringify(row.inputModalities ?? []) ===
-        JSON.stringify(incoming.inputModalities ?? [])
+        JSON.stringify(incoming.inputModalities ?? []) &&
+      JSON.stringify(row.supportedReasoningLevels ?? []) ===
+        JSON.stringify(incoming.supportedReasoningLevels ?? []) &&
+      (row.defaultReasoningLevel ?? "") ===
+        (incoming.defaultReasoningLevel ?? "")
     );
   });
 }
@@ -1052,6 +1079,64 @@ export function CodexFormFields({
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        {/* 思考等级映射：留空 = 使用模板默认（中立模板 none/high，
+                            DeepSeek 官方镜像 low/high/max），按上游实际支持填写 */}
+                        <div className="space-y-1 md:col-span-4">
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              value={reasoningLevelsToText(
+                                row.supportedReasoningLevels,
+                              )}
+                              onChange={(event) => {
+                                const levels = reasoningLevelsFromText(
+                                  event.target.value,
+                                );
+                                handleUpdateCatalogRow(index, {
+                                  supportedReasoningLevels:
+                                    levels.length > 0 ? levels : undefined,
+                                });
+                              }}
+                              placeholder={t(
+                                "codexConfig.catalogReasoningPlaceholder",
+                                {
+                                  defaultValue:
+                                    "思考等级（逗号分隔，例如: low, high, max；留空使用模板默认）",
+                                },
+                              )}
+                              aria-label={t(
+                                "codexConfig.catalogColumnReasoning",
+                                { defaultValue: "思考等级" },
+                              )}
+                              className="flex-1"
+                            />
+                            <Input
+                              value={row.defaultReasoningLevel ?? ""}
+                              onChange={(event) =>
+                                handleUpdateCatalogRow(index, {
+                                  defaultReasoningLevel:
+                                    event.target.value.trim() || undefined,
+                                })
+                              }
+                              placeholder={t(
+                                "codexConfig.catalogDefaultReasoningPlaceholder",
+                                {
+                                  defaultValue: "默认等级（可选，例如: high）",
+                                },
+                              )}
+                              aria-label={t(
+                                "codexConfig.catalogColumnDefaultReasoning",
+                                { defaultValue: "默认思考等级" },
+                              )}
+                              className="sm:w-56"
+                            />
+                          </div>
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            {t("codexConfig.catalogReasoningHint", {
+                              defaultValue:
+                                "Codex 会把这里填写的等级原样发给上游 reasoning.effort，请按上游实际支持填写；留空则使用模板默认等级。",
+                            })}
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>

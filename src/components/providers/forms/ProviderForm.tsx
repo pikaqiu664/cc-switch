@@ -161,6 +161,14 @@ export const normalizeCodexCatalogModelsForSave = (
 
     const baseInstructions = item.baseInstructions?.trim();
 
+    // 思考等级映射：去空白/去空串/去重，保持填写顺序；空列表不写入。
+    const supportedReasoningLevels = item.supportedReasoningLevels
+      ?.map((level) => level.trim())
+      .filter(
+        (level, index, levels) => level && levels.indexOf(level) === index,
+      );
+    const defaultReasoningLevel = item.defaultReasoningLevel?.trim();
+
     normalized.push({
       model,
       ...(displayName ? { displayName } : {}),
@@ -173,6 +181,10 @@ export const normalizeCodexCatalogModelsForSave = (
         ? { inputModalities }
         : {}),
       ...(baseInstructions ? { baseInstructions } : {}),
+      ...(supportedReasoningLevels && supportedReasoningLevels.length > 0
+        ? { supportedReasoningLevels }
+        : {}),
+      ...(defaultReasoningLevel ? { defaultReasoningLevel } : {}),
     });
   }
 

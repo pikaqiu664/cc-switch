@@ -906,7 +906,20 @@
     "contextWindowInvalid": "上下文窗口必须是正整数",
     "profile": "客户端模型档位",
     "rawConfig": "config.toml",
-    "invalidToml": "config.toml 格式错误：{{error}}"
+    "invalidToml": "config.toml 格式错误：{{error}}",
+    "modelProfilesLabel": "模型档位",
+    "modelProfilesHint": "一个档位对应 config.toml 的一张 [model.<档位名>] 表；API 地址、API Key 与 API Backend 为所有档位共享。思考等级按上游实际支持填写（逗号分隔），留空不写入。",
+    "fillEfforts": "一键填充等级",
+    "fillEffortsEmpty": "请先在第一行填写思考等级",
+    "fillEffortsSuccess": "已将思考等级应用到所有档位",
+    "addModel": "添加模型",
+    "columnProfile": "档位名",
+    "columnName": "显示名",
+    "columnModel": "实际请求模型",
+    "columnContextWindow": "上下文窗口",
+    "columnReasoning": "思考等级",
+    "columnDefaultProfile": "设为默认档位",
+    "namePlaceholder": "例如: DeepSeek V4 Flash"
   },
   "sessionManager": {
     "title": "会话管理",
@@ -1383,7 +1396,12 @@
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "预设供应商已自动配置；自定义供应商会按名称/地址自动推断。仅当自动识别不准时才需手动覆盖。",
     "advancedSectionHint": "包含上游格式、模型映射、思考能力与自定义 User-Agent。使用 Chat Completions 协议的供应商需开启路由接管才能使用。",
-    "noCommonConfigToApply": "通用配置片段为空或没有可写入的内容"
+    "noCommonConfigToApply": "通用配置片段为空或没有可写入的内容",
+    "catalogColumnReasoning": "思考等级",
+    "catalogReasoningPlaceholder": "思考等级（逗号分隔，例如: low, high, max；留空使用模板默认）",
+    "catalogReasoningHint": "Codex 会把这里填写的等级原样发给上游 reasoning.effort，请按上游实际支持填写；留空则使用模板默认等级。",
+    "catalogColumnDefaultReasoning": "默认思考等级",
+    "catalogDefaultReasoningPlaceholder": "默认等级（可选，例如: high）"
   },
   "geminiConfig": {
     "envFile": "环境变量 (.env)",

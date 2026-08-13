@@ -906,7 +906,20 @@
     "contextWindowInvalid": "Context window must be a positive integer",
     "profile": "Client model profile",
     "rawConfig": "config.toml",
-    "invalidToml": "Invalid config.toml: {{error}}"
+    "invalidToml": "Invalid config.toml: {{error}}",
+    "modelProfilesLabel": "Model profiles",
+    "modelProfilesHint": "Each profile maps to one [model.<profile>] table in config.toml; API URL, API key and API backend are shared across profiles. Fill reasoning levels as supported by the upstream (comma separated); empty writes nothing.",
+    "fillEfforts": "Fill all levels",
+    "fillEffortsEmpty": "Fill the first row's reasoning levels first",
+    "fillEffortsSuccess": "Reasoning levels applied to all profiles",
+    "addModel": "Add model",
+    "columnProfile": "Profile",
+    "columnName": "Display name",
+    "columnModel": "Upstream model",
+    "columnContextWindow": "Context window",
+    "columnReasoning": "Reasoning levels",
+    "columnDefaultProfile": "Set as default profile",
+    "namePlaceholder": "e.g. DeepSeek V4 Flash"
   },
   "sessionManager": {
     "title": "Session Manager",
@@ -1383,7 +1396,12 @@
     "reasoningGroupTitle": "Reasoning Capability",
     "reasoningSectionHint": "Preset providers are configured automatically; custom providers are inferred from name/URL. Override manually only when auto-detection is wrong.",
     "advancedSectionHint": "Includes upstream format, model mapping, reasoning overrides and custom User-Agent. Providers using the Chat Completions protocol require routing takeover to be enabled.",
-    "noCommonConfigToApply": "The common config snippet is empty or contains nothing to write"
+    "noCommonConfigToApply": "The common config snippet is empty or contains nothing to write",
+    "catalogColumnReasoning": "Reasoning levels",
+    "catalogReasoningPlaceholder": "Reasoning levels (comma separated, e.g. low, high, max; empty = template default)",
+    "catalogReasoningHint": "Codex forwards these levels verbatim as upstream reasoning.effort; fill in what the upstream actually supports. Leave empty to keep the template default.",
+    "catalogColumnDefaultReasoning": "Default reasoning level",
+    "catalogDefaultReasoningPlaceholder": "Default level (optional, e.g. high)"
   },
   "geminiConfig": {
     "envFile": "Environment Variables (.env)",

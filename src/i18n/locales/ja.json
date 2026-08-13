@@ -906,7 +906,20 @@
     "contextWindowInvalid": "コンテキストウィンドウは正の整数で指定してください",
     "profile": "クライアントモデルプロファイル",
     "rawConfig": "config.toml",
-    "invalidToml": "config.toml の形式が不正です: {{error}}"
+    "invalidToml": "config.toml の形式が不正です: {{error}}",
+    "modelProfilesLabel": "モデルプロファイル",
+    "modelProfilesHint": "各プロファイルは config.toml の [model.<プロファイル名>] テーブルに対応します。API URL・API キー・API バックエンドは全プロファイルで共有です。推論レベルは upstream がサポートする値をカンマ区切りで入力し、空欄なら書き込みません。",
+    "fillEfforts": "全行にレベル反映",
+    "fillEffortsEmpty": "先に1行目の推論レベルを入力してください",
+    "fillEffortsSuccess": "推論レベルを全プロファイルに反映しました",
+    "addModel": "モデルを追加",
+    "columnProfile": "プロファイル名",
+    "columnName": "表示名",
+    "columnModel": "実リクエストモデル",
+    "columnContextWindow": "コンテキストウィンドウ",
+    "columnReasoning": "推論レベル",
+    "columnDefaultProfile": "既定プロファイルに設定",
+    "namePlaceholder": "例: DeepSeek V4 Flash"
   },
   "sessionManager": {
     "title": "セッション管理",
@@ -1383,7 +1396,12 @@
     "reasoningGroupTitle": "思考能力",
     "reasoningSectionHint": "プリセットの供給元は自動的に設定され、カスタム供給元は名前/URL から自動推論されます。自動識別が正しくない場合のみ手動で上書きしてください。",
     "advancedSectionHint": "上流フォーマット、モデルマッピング、思考能力、カスタム User-Agent の設定を含みます。Chat Completions プロトコルを使用するプロバイダーはルーティング引き継ぎの有効化が必要です。",
-    "noCommonConfigToApply": "共通設定スニペットが空か、書き込む内容がありません"
+    "noCommonConfigToApply": "共通設定スニペットが空か、書き込む内容がありません",
+    "catalogColumnReasoning": "推論レベル",
+    "catalogReasoningPlaceholder": "推論レベル（カンマ区切り、例: low, high, max；空欄はテンプレート既定値）",
+    "catalogReasoningHint": "ここに入力したレベルは upstream の reasoning.effort にそのまま送信されます。upstream が実際にサポートする値を入力し、空欄の場合はテンプレート既定値を維持します。",
+    "catalogColumnDefaultReasoning": "既定の推論レベル",
+    "catalogDefaultReasoningPlaceholder": "既定レベル（任意、例: high）"
   },
   "geminiConfig": {
     "envFile": "環境変数 (.env)",

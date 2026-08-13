@@ -619,7 +619,34 @@ fn codex_catalog_model_entry(
         }
     }
 
+    apply_reasoning_level_overrides(entry_obj, spec);
+
     entry
+}
+
+/// 将用户填写的模型思考等级映射/默认等级应用到目录条目：
+/// 有值时覆盖条目的 supported_reasoning_levels / default_reasoning_level，
+/// 无值时保持模板（中立模板 none/high）或官方目录（DeepSeek low/high/max）
+/// 原有声明。effort 值按 Codex 目录 schema 原样透传。
+fn apply_reasoning_level_overrides(
+    entry_obj: &mut serde_json::Map<String, Value>,
+    spec: &CodexCatalogModelSpec,
+) {
+    if let Some(levels) = spec.supported_reasoning_levels.as_deref() {
+        let presets = levels
+            .iter()
+            .map(|effort| {
+                json!({
+                    "effort": effort,
+                    "description": format!("Reasoning level {effort}"),
+                })
+            })
+            .collect::<Vec<_>>();
+        entry_obj.insert("supported_reasoning_levels".to_string(), json!(presets));
+    }
+    if let Some(level) = spec.default_reasoning_level.as_deref() {
+        entry_obj.insert("default_reasoning_level".to_string(), json!(level));
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -645,6 +672,13 @@ struct CodexCatalogModelSpec {
     /// back to the template default when absent. Only consulted for
     /// `NativeResponses`.
     base_instructions: Option<String>,
+    /// 模型思考等级映射（用户显式填写）：覆盖模板/官方目录的
+    /// `supported_reasoning_levels`。留空保持模板默认。effort 允许任意非空
+    /// 字符串（Codex 的 ReasoningEffort 解析未知值会透传）。
+    supported_reasoning_levels: Option<Vec<String>>,
+    /// 默认思考等级（用户显式填写）：覆盖条目 `default_reasoning_level`，
+    /// 留空沿用模板默认值。
+    default_reasoning_level: Option<String>,
 }
 
 fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
@@ -711,6 +745,33 @@ fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
             .filter(|text| !text.is_empty())
             .map(str::to_string);
 
+        // 思考等级映射：camelCase（DB SSOT）优先，snake_case（live 反解兜底）兼容。
+        // 数组元素去空白/去空串/去重，保持填写顺序。
+        let mut supported_reasoning_levels = model_config
+            .get("supportedReasoningLevels")
+            .or_else(|| model_config.get("supported_reasoning_levels"))
+            .and_then(|value| value.as_array())
+            .map(|levels| {
+                let mut seen = std::collections::HashSet::new();
+                levels
+                    .iter()
+                    .filter_map(|level| level.as_str())
+                    .map(str::trim)
+                    .filter(|level| !level.is_empty())
+                    .filter(|level| seen.insert(level.to_string()))
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|levels| !levels.is_empty());
+
+        let default_reasoning_level = model_config
+            .get("defaultReasoningLevel")
+            .or_else(|| model_config.get("default_reasoning_level"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|level| !level.is_empty())
+            .map(str::to_string);
+
         specs.push(CodexCatalogModelSpec {
             model: model.to_string(),
             display_name,
@@ -718,6 +779,8 @@ fn codex_catalog_model_specs(settings: &Value) -> Vec<CodexCatalogModelSpec> {
             supports_parallel_tool_calls,
             input_modalities,
             base_instructions,
+            supported_reasoning_levels,
+            default_reasoning_level,
         });
     }
 
@@ -1092,6 +1155,9 @@ fn codex_vendor_catalog_model_entry(
     {
         entry_obj.insert("base_instructions".to_string(), json!(base_instructions));
     }
+
+    // 用户填写的思考等级映射优先于官方目录声明；留空保持官方值。
+    apply_reasoning_level_overrides(entry_obj, spec);
 
     // Defensive: if a future codex parser requires a field the vendor file
     // predates, backfill only whitelisted parser-required keys.
@@ -4458,5 +4524,147 @@ model_catalog_json = "cc-switch-model-catalog.json"
             result.is_err(),
             "file larger than MAX_CODEX_CATALOG_BYTES must be rejected"
         );
+    }
+
+    fn catalog_spec(
+        model: &str,
+        levels: Option<Vec<&str>>,
+        default_level: Option<&str>,
+    ) -> CodexCatalogModelSpec {
+        CodexCatalogModelSpec {
+            model: model.to_string(),
+            display_name: None,
+            context_window: None,
+            supports_parallel_tool_calls: None,
+            input_modalities: None,
+            base_instructions: None,
+            supported_reasoning_levels: levels
+                .map(|items| items.iter().map(|s| s.to_string()).collect()),
+            default_reasoning_level: default_level.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn user_reasoning_levels_override_neutral_template() {
+        let template = load_codex_native_responses_template();
+        let spec = catalog_spec(
+            "deepseek-v4-flash",
+            Some(vec!["low", "high", "max"]),
+            Some("medium"),
+        );
+        let entry = codex_catalog_model_entry(
+            &template,
+            &spec,
+            0,
+            CodexCatalogToolProfile::NativeResponses,
+            128_000,
+        );
+
+        let levels = entry["supported_reasoning_levels"]
+            .as_array()
+            .expect("supported_reasoning_levels array");
+        let efforts: Vec<_> = levels
+            .iter()
+            .map(|level| level["effort"].as_str().expect("effort string"))
+            .collect();
+        assert_eq!(efforts, vec!["low", "high", "max"]);
+        assert_eq!(
+            entry["default_reasoning_level"].as_str(),
+            Some("medium"),
+            "用户填写的默认等级必须覆盖模板默认值"
+        );
+    }
+
+    #[test]
+    fn empty_reasoning_overrides_keep_template_default() {
+        let template = load_codex_native_responses_template();
+        let spec = catalog_spec("deepseek-v4-flash", None, None);
+        let entry = codex_catalog_model_entry(
+            &template,
+            &spec,
+            0,
+            CodexCatalogToolProfile::NativeResponses,
+            128_000,
+        );
+
+        let levels = entry["supported_reasoning_levels"]
+            .as_array()
+            .expect("supported_reasoning_levels array");
+        let efforts: Vec<_> = levels
+            .iter()
+            .map(|level| level["effort"].as_str().expect("effort string"))
+            .collect();
+        assert_eq!(
+            efforts,
+            vec!["none", "high"],
+            "未填写时必须保持中立模板默认等级"
+        );
+        assert_eq!(
+            entry["default_reasoning_level"].as_str(),
+            Some("high"),
+            "未填写时必须保持中立模板默认等级值"
+        );
+    }
+
+    #[test]
+    fn user_reasoning_levels_override_official_vendor_catalog() {
+        let vendor_models = load_codex_deepseek_official_catalog_models();
+        assert!(!vendor_models.is_empty(), "DeepSeek 官方目录必须内置");
+
+        let spec = catalog_spec(
+            "deepseek-v4-flash",
+            Some(vec!["low", "medium", "high", "max"]),
+            Some("high"),
+        );
+        let entry = codex_vendor_catalog_model_entry(&vendor_models, &spec, 0);
+
+        let levels = entry["supported_reasoning_levels"]
+            .as_array()
+            .expect("supported_reasoning_levels array");
+        let efforts: Vec<_> = levels
+            .iter()
+            .map(|level| level["effort"].as_str().expect("effort string"))
+            .collect();
+        assert_eq!(
+            efforts,
+            vec!["low", "medium", "high", "max"],
+            "用户填写必须覆盖 DeepSeek 官方目录的 low/high/max"
+        );
+        assert_eq!(entry["default_reasoning_level"].as_str(), Some("high"));
+    }
+
+    #[test]
+    fn catalog_specs_parse_reasoning_levels_both_formats() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    {
+                        "model": "deepseek-v4-flash",
+                        "supportedReasoningLevels": ["low", " high ", "low", "max"],
+                        "defaultReasoningLevel": "high"
+                    },
+                    {
+                        "model": "deepseek-v4-pro",
+                        "supported_reasoning_levels": ["low", "high"],
+                        "default_reasoning_level": "low"
+                    }
+                ]
+            }
+        });
+        let specs = codex_catalog_model_specs(&settings);
+        assert_eq!(specs.len(), 2);
+
+        assert_eq!(
+            specs[0].supported_reasoning_levels.as_deref(),
+            Some(&["low".to_string(), "high".to_string(), "max".to_string()][..]),
+            "camelCase 解析 + 去空白/去重/保持顺序"
+        );
+        assert_eq!(specs[0].default_reasoning_level.as_deref(), Some("high"));
+        assert_eq!(
+            specs[1].supported_reasoning_levels.as_deref(),
+            Some(&["low".to_string(), "high".to_string()][..]),
+            "snake_case 兜底解析"
+        );
+        assert_eq!(specs[1].default_reasoning_level.as_deref(), Some("low"));
     }
 }

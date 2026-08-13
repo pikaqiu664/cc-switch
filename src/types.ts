@@ -269,6 +269,11 @@ export interface CodexCatalogModel {
   // Codex requires this field in every catalog entry; when omitted the backend
   // falls back to a neutral default. e.g. MiMo "developed by Xiaomi".
   baseInstructions?: string;
+  // 模型思考等级映射：生成 Codex 模型目录条目时覆盖模板的 supported_reasoning_levels。
+  // 留空保持模板默认（中立模板 none/high，DeepSeek 官方镜像 low/high/max）。
+  supportedReasoningLevels?: string[];
+  // 默认思考等级（可选）：写入目录条目的 default_reasoning_level，留空沿用模板默认值。
+  defaultReasoningLevel?: string;
 }
 
 // Claude 认证字段类型
