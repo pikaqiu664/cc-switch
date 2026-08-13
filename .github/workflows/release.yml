@@ -101,9 +101,10 @@ jobs:
           set -euxo pipefail
           mkdir -p release-assets
           VERSION="${GITHUB_REF_NAME}"
-          BUNDLE_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos"
-          APP_PATH=$(find "$BUNDLE_DIR" -maxdepth 1 -name "*.app" -type d | head -1 || true)
-          DMG_PATH=$(find "$BUNDLE_DIR" -maxdepth 1 -name "*.dmg" -type f | head -1 || true)
+          # Tauri 2 的产物布局：.app 在 bundle/macos、.dmg 在 bundle/dmg
+          BUNDLE_ROOT="src-tauri/target/universal-apple-darwin/release/bundle"
+          APP_PATH=$(find "$BUNDLE_ROOT/macos" -maxdepth 1 -name "*.app" -type d | head -1 || true)
+          DMG_PATH=$(find "$BUNDLE_ROOT/dmg" -maxdepth 1 -name "*.dmg" -type f | head -1 || true)
           if [ -z "$APP_PATH" ] || [ -z "$DMG_PATH" ]; then
             echo "❌ 未找到 macOS .app/.dmg 产物" >&2
             exit 1
