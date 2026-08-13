@@ -37,6 +37,10 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
   const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // 标记外部 value 同步触发的文档变更：这类变更不是用户编辑，
+  // 不应回调 onChange，否则会与表单字段形成双向循环（Grok 表单曾因此
+  // 出现"api 地址首次输入回退"）。
+  const isExternalSyncRef = useRef(false);
 
   // JSON linter 函数
   const jsonLinter = useMemo(
@@ -143,7 +147,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
       sizingTheme,
       jsonLinter,
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
+        if (update.docChanged && !isExternalSyncRef.current) {
           const newValue = update.state.doc.toString();
           onChange(newValue);
         }
@@ -213,6 +217,9 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
   // 当 value 从外部改变时更新编辑器内容
   useEffect(() => {
     if (viewRef.current && viewRef.current.state.doc.toString() !== value) {
+      // dispatch 是同步的，updateListener 在 dispatch 内同步执行；
+      // 标记外部同步后再 dispatch，避免外部更新被当成用户编辑回调 onChange。
+      isExternalSyncRef.current = true;
       const transaction = viewRef.current.state.update({
         changes: {
           from: 0,
@@ -221,6 +228,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
         },
       });
       viewRef.current.dispatch(transaction);
+      isExternalSyncRef.current = false;
     }
   }, [value]);
 

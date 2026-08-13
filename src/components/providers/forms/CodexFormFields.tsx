@@ -26,7 +26,12 @@ import {
   Trash2,
 } from "lucide-react";
 import EndpointSpeedTest from "./EndpointSpeedTest";
-import { ApiKeySection, EndpointField, ModelDropdown } from "./shared";
+import {
+  ApiKeySection,
+  EndpointField,
+  ModelDropdown,
+  ReasoningLevelsInput,
+} from "./shared";
 import { XaiOAuthSection } from "./XaiOAuthSection";
 import {
   fetchModelsForConfig,
@@ -119,23 +124,6 @@ interface CodexFormFieldsProps {
 }
 
 type CodexCatalogRow = CodexCatalogModel & { rowId: string };
-
-/** 思考等级数组 → 逗号分隔文本（用于行内输入展示） */
-const reasoningLevelsToText = (levels?: string[]): string =>
-  (levels ?? []).join(", ");
-
-/** 逗号分隔文本 → 思考等级数组（去空白、去空串、去重，保持填写顺序） */
-const reasoningLevelsFromText = (text: string): string[] => {
-  const seen = new Set<string>();
-  return text
-    .split(",")
-    .map((level) => level.trim())
-    .filter((level) => {
-      if (!level || seen.has(level)) return false;
-      seen.add(level);
-      return true;
-    });
-};
 
 function createCatalogRow(seed?: Partial<CodexCatalogModel>): CodexCatalogRow {
   return {
@@ -1083,19 +1071,13 @@ export function CodexFormFields({
                             DeepSeek 官方镜像 low/high/max），按上游实际支持填写 */}
                         <div className="space-y-1 md:col-span-4">
                           <div className="flex flex-col gap-2 sm:flex-row">
-                            <Input
-                              value={reasoningLevelsToText(
-                                row.supportedReasoningLevels,
-                              )}
-                              onChange={(event) => {
-                                const levels = reasoningLevelsFromText(
-                                  event.target.value,
-                                );
+                            <ReasoningLevelsInput
+                              value={row.supportedReasoningLevels}
+                              onChange={(levels) =>
                                 handleUpdateCatalogRow(index, {
-                                  supportedReasoningLevels:
-                                    levels.length > 0 ? levels : undefined,
-                                });
-                              }}
+                                  supportedReasoningLevels: levels,
+                                })
+                              }
                               placeholder={t(
                                 "codexConfig.catalogReasoningPlaceholder",
                                 {

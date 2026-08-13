@@ -190,4 +190,75 @@ context_window = 250000
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit.mock.calls[0][0].meta.custom_endpoints).toBeUndefined();
   });
+
+  it("keeps commas in reasoning levels while typing and keeps baseUrl stable", () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <GrokBuildProviderForm
+        submitLabel="Save"
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    );
+
+    // 连续输入 API 地址不回退（修复 JsonEditor 外部同步循环后的行为契约）
+    const baseUrlInput =
+      container.querySelector<HTMLInputElement>("#codexBaseUrl")!;
+    fireEvent.change(baseUrlInput, { target: { value: "h" } });
+    expect(baseUrlInput.value).toBe("h");
+    fireEvent.change(baseUrlInput, {
+      target: { value: "https://api.deepseek.com" },
+    });
+    expect(baseUrlInput.value).toBe("https://api.deepseek.com");
+
+    // 思考等级输入过程逗号保留（显示层不即时归一化）
+    const reasoningInput = screen.getByLabelText(
+      "思考等级",
+    ) as HTMLInputElement;
+    fireEvent.change(reasoningInput, { target: { value: "low, high," } });
+    expect(reasoningInput.value).toBe("low, high,");
+  });
+
+  it("submits reasoning levels typed without blur", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <GrokBuildProviderForm
+        submitLabel="Save"
+        onSubmit={onSubmit}
+        onCancel={() => {}}
+      />,
+    );
+
+    fireEvent.change(
+      container.querySelector<HTMLInputElement>('input[name="name"]')!,
+      { target: { value: "DeepSeek" } },
+    );
+    fireEvent.change(
+      container.querySelector<HTMLInputElement>("#codexBaseUrl")!,
+      { target: { value: "https://api.deepseek.com/v1" } },
+    );
+    fireEvent.change(screen.getByLabelText("API Key"), {
+      target: { value: "sk-test" },
+    });
+
+    const reasoningInput = screen.getByLabelText(
+      "思考等级",
+    ) as HTMLInputElement;
+    fireEvent.change(reasoningInput, {
+      target: { value: "low, high, max" },
+    });
+    // 不 blur 直接提交：结构化值已在每次输入时实时回调，提交不应丢等级
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const settings = JSON.parse(onSubmit.mock.calls[0][0].settingsConfig);
+    const config = parseToml(settings.config) as any;
+    expect(config.model["grok-4.5"].reasoning_efforts).toEqual([
+      "low",
+      "high",
+      "max",
+    ]);
+    expect(config.model["grok-4.5"].supports_reasoning_effort).toBe(true);
+  });
 });

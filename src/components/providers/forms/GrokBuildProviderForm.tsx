@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
@@ -33,7 +33,13 @@ import type {
 import type { ProviderFormProps, ProviderFormValues } from "./ProviderForm";
 import { BasicFormFields } from "./BasicFormFields";
 import { CodexFormFields } from "./CodexFormFields";
+import { ModelInputWithFetch, ReasoningLevelsInput } from "./shared";
 import { ProviderPresetSelector } from "./ProviderPresetSelector";
+import {
+  fetchModelsForConfig,
+  showFetchModelsError,
+  type FetchedModel,
+} from "@/lib/api/model-fetch";
 import {
   grokBuildOfficialPreset,
   grokBuildProviderPresets,
@@ -50,7 +56,6 @@ import {
   GROK_BUILD_DEFAULT_CONTEXT_WINDOW,
   GROK_BUILD_DEFAULT_MODEL,
   buildGrokBuildConfig,
-  normalizeGrokReasoningEfforts,
   parseGrokBuildConfig,
   updateGrokBuildConfig,
   validateGrokBuildConfig,
@@ -188,6 +193,47 @@ export function GrokBuildProviderForm({
   const [draftCustomEndpoints, setDraftCustomEndpoints] = useState<string[]>(
     [],
   );
+  // 模型自动获取：拉取 /models 列表供行内"实际请求模型"下拉选择
+  const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const fetchModelsSeqRef = useRef(0);
+
+  // 拉取请求身份（Base URL / 完整地址开关 / API Key / 自定义 UA）一变即清空
+  // 旧列表并作废在途请求，避免换号后残留旧列表误导选择。
+  useEffect(() => {
+    fetchModelsSeqRef.current += 1;
+    setFetchedModels((prev) => (prev.length === 0 ? prev : []));
+  }, [baseUrl, isFullUrl, apiKey, customUserAgent]);
+
+  const handleFetchModels = () => {
+    if (!baseUrl.trim() || !apiKey.trim()) {
+      showFetchModelsError(null, t, {
+        hasApiKey: !!apiKey.trim(),
+        hasBaseUrl: !!baseUrl.trim(),
+      });
+      return;
+    }
+    const seq = ++fetchModelsSeqRef.current;
+    setIsFetchingModels(true);
+    fetchModelsForConfig(baseUrl, apiKey, isFullUrl, undefined, customUserAgent)
+      .then((models) => {
+        if (seq !== fetchModelsSeqRef.current) return;
+        setFetchedModels(models);
+        if (models.length === 0) {
+          toast.info(t("providerForm.fetchModelsEmpty"));
+        } else {
+          toast.success(
+            t("providerForm.fetchModelsSuccess", { count: models.length }),
+          );
+        }
+      })
+      .catch((error) => {
+        if (seq !== fetchModelsSeqRef.current) return;
+        console.warn("[GrokBuild] Failed to fetch models:", error);
+        showFetchModelsError(error, t);
+      })
+      .finally(() => setIsFetchingModels(false));
+  };
 
   const form = useForm<ProviderFormData>({
     resolver: zodResolver(providerSchema),
@@ -732,13 +778,14 @@ export function GrokBuildProviderForm({
                         defaultValue: "显示名",
                       })}
                     />
-                    <Input
+                    <ModelInputWithFetch
+                      id={`grokbuild-model-${index}`}
                       value={entry.model}
-                      onChange={(event) =>
-                        updateEntry(index, { model: event.target.value })
-                      }
+                      onChange={(value) => updateEntry(index, { model: value })}
                       placeholder="deepseek-v4-flash"
-                      autoComplete="off"
+                      fetchedModels={fetchedModels}
+                      isLoading={isFetchingModels}
+                      onFetch={handleFetchModels}
                       aria-label={t("grokBuild.columnModel", {
                         defaultValue: "实际请求模型",
                       })}
@@ -762,17 +809,14 @@ export function GrokBuildProviderForm({
                         defaultValue: "上下文窗口",
                       })}
                     />
-                    <Input
-                      value={entry.reasoningEfforts.join(", ")}
-                      onChange={(event) =>
+                    <ReasoningLevelsInput
+                      value={entry.reasoningEfforts}
+                      onChange={(levels) =>
                         updateEntry(index, {
-                          reasoningEfforts: normalizeGrokReasoningEfforts(
-                            event.target.value,
-                          ),
+                          reasoningEfforts: levels ?? [],
                         })
                       }
                       placeholder="low, high, max"
-                      autoComplete="off"
                       aria-label={t("grokBuild.columnReasoning", {
                         defaultValue: "思考等级",
                       })}

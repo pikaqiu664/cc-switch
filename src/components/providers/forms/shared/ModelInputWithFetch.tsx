@@ -14,6 +14,7 @@ interface ModelInputWithFetchProps {
   isLoading: boolean;
   /** 传入时显示获取按钮；不传时只在有数据后显示下拉 */
   onFetch?: () => void;
+  "aria-label"?: string;
 }
 
 export function ModelInputWithFetch({
@@ -24,6 +25,7 @@ export function ModelInputWithFetch({
   fetchedModels,
   isLoading,
   onFetch,
+  "aria-label": ariaLabel,
 }: ModelInputWithFetchProps) {
   const { t } = useTranslation();
 
@@ -38,6 +40,7 @@ export function ModelInputWithFetch({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete="off"
+          aria-label={ariaLabel}
           className="flex-1"
         />
         <ModelDropdown models={fetchedModels} onSelect={onChange} />
@@ -56,6 +59,7 @@ export function ModelInputWithFetch({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete="off"
+          aria-label={ariaLabel}
           className="flex-1"
         />
         <Button variant="outline" size="icon" className="shrink-0" disabled>
@@ -76,6 +80,7 @@ export function ModelInputWithFetch({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete="off"
+          aria-label={ariaLabel}
           className="flex-1"
         />
         <Button
@@ -101,6 +106,7 @@ export function ModelInputWithFetch({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       autoComplete="off"
+      aria-label={ariaLabel}
     />
   );
 }
