@@ -270,10 +270,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
             baseUrl: env.GOOGLE_GEMINI_BASE_URL,
           };
         } else if (appId === "grokbuild") {
-          const grokConfig = parseGrokBuildConfig(
-            (config as any).config,
-            provider.name,
-          );
+          const grokConfig = parseGrokBuildConfig((config as any).config);
           return {
             apiKey: grokConfig.apiKey,
             baseUrl: grokConfig.baseUrl,
