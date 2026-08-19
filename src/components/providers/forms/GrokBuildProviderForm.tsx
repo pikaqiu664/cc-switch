@@ -56,6 +56,7 @@ import {
   GROK_BUILD_DEFAULT_CONTEXT_WINDOW,
   GROK_BUILD_DEFAULT_MODEL,
   buildGrokBuildConfig,
+  GROK_BUILD_DEFAULT_API_BACKEND,
   parseGrokBuildConfig,
   updateGrokBuildConfig,
   validateGrokBuildConfig,
@@ -393,8 +394,6 @@ export function GrokBuildProviderForm({
       "auth" in preset && typeof preset.auth?.OPENAI_API_KEY === "string"
         ? preset.auth.OPENAI_API_KEY
         : "";
-    const presetApiBackend = grokApiBackendFromApiFormat(presetApiFormat);
-
     form.setValue("name", presetName);
     form.setValue("websiteUrl", preset.websiteUrl ?? "");
     form.setValue("icon", preset.icon ?? "");
@@ -405,7 +404,6 @@ export function GrokBuildProviderForm({
     setBaseUrl(presetBaseUrl);
     setApiKey(presetApiKey);
     setApiFormat(presetApiFormat);
-    setApiBackend(presetApiBackend);
     setPresetEndpoints(preset.endpointCandidates ?? []);
     const presetEntry = createModelEntry(presetModel, presetName);
     setModelEntries([presetEntry]);

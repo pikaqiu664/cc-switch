@@ -3,7 +3,7 @@ import { EditorView, basicSetup } from "codemirror";
 import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import { placeholder } from "@codemirror/view";
 import { linter, Diagnostic } from "@codemirror/lint";
 import { useTranslation } from "react-i18next";
@@ -13,6 +13,7 @@ import { formatJSON } from "@/utils/formatters";
 
 interface JsonEditorProps {
   id?: string;
+  ariaLabel?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -22,9 +23,68 @@ interface JsonEditorProps {
   language?: "json" | "javascript";
   height?: string | number;
   showMinimap?: boolean; // 添加此属性以防未来使用
+  readOnly?: boolean;
+}
+
+function minimalTextChange(current: string, next: string) {
+  let from = 0;
+  const sharedLength = Math.min(current.length, next.length);
+  while (from < sharedLength && current[from] === next[from]) from += 1;
+
+  let currentTo = current.length;
+  let nextTo = next.length;
+  while (
+    currentTo > from &&
+    nextTo > from &&
+    current[currentTo - 1] === next[nextTo - 1]
+  ) {
+    currentTo -= 1;
+    nextTo -= 1;
+  }
+
+  return {
+    from,
+    to: currentTo,
+    insert: next.slice(from, nextTo),
+  };
+}
+
+function uniqueContextIndex(value: string, context: string): number | null {
+  if (!context) return null;
+  const index = value.indexOf(context);
+  if (index < 0 || value.indexOf(context, index + 1) >= 0) return null;
+  return index;
+}
+
+function mapPositionByContext(
+  current: string,
+  next: string,
+  position: number,
+): number | null {
+  if (position <= 0) return 0;
+  if (position >= current.length) return next.length;
+
+  const maxContextLength = 96;
+  const rightLimit = Math.min(maxContextLength, current.length - position);
+  for (let length = rightLimit; length > 0; length -= 1) {
+    const context = current.slice(position, position + length);
+    const index = uniqueContextIndex(next, context);
+    if (index !== null) return index;
+  }
+
+  const leftLimit = Math.min(maxContextLength, position);
+  for (let length = leftLimit; length > 0; length -= 1) {
+    const context = current.slice(position - length, position);
+    const index = uniqueContextIndex(next, context);
+    if (index !== null) return index + length;
+  }
+
+  return null;
 }
 
 const JsonEditor: React.FC<JsonEditorProps> = ({
+  id,
+  ariaLabel,
   value,
   onChange,
   placeholder: placeholderText = "",
@@ -33,6 +93,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
   showValidation = true,
   language = "json",
   height,
+  readOnly = false,
 }) => {
   const { t } = useTranslation();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -41,6 +102,11 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
   // 不应回调 onChange，否则会与表单字段形成双向循环（Grok 表单曾因此
   // 出现"api 地址首次输入回退"）。
   const isExternalSyncRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const hasExplicitHeight = height !== undefined;
+  const heightValue =
+    typeof height === "number" ? `${height}px` : (height ?? undefined);
 
   // JSON linter 函数
   const jsonLinter = useMemo(
@@ -86,7 +152,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
     if (!editorRef.current) return;
 
     // 创建编辑器扩展
-    const minHeightPx = height ? undefined : Math.max(1, rows) * 18;
+    const minHeightPx = hasExplicitHeight ? undefined : Math.max(1, rows) * 18;
 
     // 使用 baseTheme 定义基础样式，优先级低于 oneDark，但可以正确响应主题
     const baseTheme = EditorView.baseTheme({
@@ -122,14 +188,9 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
     });
 
     // 使用 theme 定义尺寸和字体样式
-    const heightValue = height
-      ? typeof height === "number"
-        ? `${height}px`
-        : height
-      : undefined;
     const sizingTheme = EditorView.theme({
-      "&": heightValue
-        ? { height: heightValue }
+      "&": hasExplicitHeight
+        ? { height: "100%" }
         : { minHeight: `${minHeightPx}px` },
       ".cm-scroller": { overflow: "auto" },
       ".cm-content": {
@@ -146,10 +207,15 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
       baseTheme,
       sizingTheme,
       jsonLinter,
+      EditorState.readOnly.of(readOnly),
+      EditorView.editable.of(!readOnly),
+      EditorView.contentAttributes.of(
+        ariaLabel ? { "aria-label": ariaLabel } : {},
+      ),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged && !isExternalSyncRef.current) {
+        if (!readOnly && update.docChanged && !isExternalSyncRef.current) {
           const newValue = update.state.doc.toString();
-          onChange(newValue);
+          onChangeRef.current(newValue);
         }
       }),
     ];
@@ -212,20 +278,51 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
       view.destroy();
       viewRef.current = null;
     };
-  }, [darkMode, rows, height, language, jsonLinter]); // 依赖项中不包含 onChange 和 placeholder，避免不必要的重建
+  }, [
+    ariaLabel,
+    darkMode,
+    hasExplicitHeight,
+    jsonLinter,
+    language,
+    placeholderText,
+    readOnly,
+    rows,
+  ]);
 
   // 当 value 从外部改变时更新编辑器内容
   useEffect(() => {
-    if (viewRef.current && viewRef.current.state.doc.toString() !== value) {
+    if (viewRef.current) {
+      const currentValue = viewRef.current.state.doc.toString();
+      if (currentValue === value) return;
       // dispatch 是同步的，updateListener 在 dispatch 内同步执行；
       // 标记外部同步后再 dispatch，避免外部更新被当成用户编辑回调 onChange。
       isExternalSyncRef.current = true;
-      const transaction = viewRef.current.state.update({
-        changes: {
-          from: 0,
-          to: viewRef.current.state.doc.length,
-          insert: value,
+      const changes = viewRef.current.state.changes(
+        minimalTextChange(currentValue, value),
+      );
+      const mappedSelection = viewRef.current.state.selection.map(changes, 1);
+      const contextualRanges = viewRef.current.state.selection.ranges.map(
+        (range, index) => {
+          const fallback = mappedSelection.ranges[index];
+          const anchor =
+            mapPositionByContext(currentValue, value, range.anchor) ??
+            fallback.anchor;
+          const head =
+            mapPositionByContext(currentValue, value, range.head) ??
+            fallback.head;
+          return range.empty
+            ? EditorSelection.cursor(head)
+            : EditorSelection.range(anchor, head);
         },
+      );
+      const transaction = viewRef.current.state.update({
+        // Preserve the unchanged prefix and suffix so CodeMirror can map the
+        // current selection through automatic JSON normalization.
+        changes,
+        selection: EditorSelection.create(
+          contextualRanges,
+          viewRef.current.state.selection.mainIndex,
+        ),
       });
       viewRef.current.dispatch(transaction);
       isExternalSyncRef.current = false;
@@ -241,7 +338,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
 
     try {
       const formatted = formatJSON(currentValue);
-      onChange(formatted);
+      onChangeRef.current(formatted);
       toast.success(t("common.formatSuccess", { defaultValue: "格式化成功" }), {
         closeButton: true,
       });
@@ -265,11 +362,21 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
       className={isFullHeight ? "flex flex-col" : ""}
     >
       <div
+        id={id}
         ref={editorRef}
-        style={{ width: "100%", height: isFullHeight ? undefined : "auto" }}
+        tabIndex={-1}
+        onFocus={(event) => {
+          if (event.target === event.currentTarget) {
+            viewRef.current?.focus();
+          }
+        }}
+        style={{
+          width: "100%",
+          height: isFullHeight ? undefined : (heightValue ?? "auto"),
+        }}
         className={isFullHeight ? "flex-1 min-h-0" : ""}
       />
-      {language === "json" && (
+      {language === "json" && !readOnly && (
         <button
           type="button"
           onClick={handleFormat}
